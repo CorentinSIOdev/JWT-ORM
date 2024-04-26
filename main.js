@@ -1,7 +1,8 @@
 const express = require('express');
 const bcryptjs = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { Cities, Users } = require('./models/db_models');
+const cookieParser = require('cookie-parser');
+const { Cities, Users, Products } = require('./models/db_models');
 require('dotenv').config({ path: './config/.env' });
 
 /** *-*-*-* EXPRESS CONFIGURATION *-*-*-* **/
@@ -11,6 +12,11 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(__dirname + '/public'));
 /** *-*-*-* END EXPRESS CONFIGURATION *-*-*-* **/
+
+/** *-*-*-* COOKIE PARSER CONFIGURATION *-*-*-* **/
+// Utilisation de cookieParser middleware pour analyser les cookies
+app.use(cookieParser());
+/** *-*-*-* END COOKIE PARSER CONFIGURATION *-*-*-* **/
 
 /** *-*-*-* EJS CONFIGURATION *-*-*-* **/
 app.set('view engine', 'ejs');
@@ -94,11 +100,49 @@ app.post('/api/login', async (req, res) => {
         // Envoyer le token dans un cookie
         res.cookie('token', token, { httpOnly: true });
 
-        res.render('login', { message: 'Connexion réussie.' });
+        // Rediriger l'utilisateur vers la page des produits
+        res.redirect('/view/products');
     } catch (error) {
         console.error(error);
         res.status(500).render('login', { message: 'Une erreur est survenue lors de la connexion.' });
     }
+});
+
+// Vérification du token JWT
+const verifyToken = require('./middleware/jwt_check');
+
+// Route pour rendre la vue de la liste des produits (avec vérification du token JWT)
+app.get('/view/products', verifyToken, async (req, res) => {
+    try {
+      const page = req.query.page || 1;
+      const limit = 40;
+      const offset = (page - 1) * limit;
+
+      // Requête pour compter le nombre total de produits
+      const totalCount = await Products.count();
+
+      // Requête pour obtenir les produits avec pagination
+      const products = await Products.findAll({ limit, offset });
+
+      // Récupérer les informations de l'utilisateur depuis le token
+        const user_id = req.user.user_id;
+        const user = await Users.findOne({ where: { user_id } });
+        // Récupérer le nom de l'utilisateur
+        const user_name = user.user_name;
+
+        // Rendre la vue des produits avec les informations de l'utilisateur
+      res.render('products', { user_name, products, totalCount, limit, page, message: '' });
+    } catch (error) {
+      console.error(error);
+      res.status(500).render('products', { message: 'Une erreur est survenue lors de la récupération des produits.' });
+    }
+});
+
+// Route api pour gérer la déconnexion de l'utilisateur
+app.get('/api/logout', (req, res) => {
+    // Supprimer le cookie contenant le token
+    res.clearCookie('token');
+    res.render('login', { message: 'Vous avez été déconnecté.' });
 });
 /** *-*-*-* END ENDPOINTS *-*-*-* **/
 
